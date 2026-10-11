@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高性能リアルタイム計測震度計</title>
+    <title>リアルタイム計測震度計 (即時追従版)</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -115,15 +115,16 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 5.0</h2>
+    <h2>計測震度システム Ver 5.5</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
-        <span class="label">気象庁震度階級（相当）</span>
+        <span class="label">現在のリアルタイム震度</span>
         <div id="shindo-class">-</div>
         <div id="shindo-val">計測震度: --</div>
     </div>
 
+    <!-- リアルタイムグラフ -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -139,6 +140,7 @@
         </div>
     </div>
 
+    <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -167,7 +169,7 @@
 var sampleWindow = new Array(); 
 var WINDOW_DURATION = 300; // 0.3秒間
 
-// フィルター用：タイピング振動を上手に丸めるための移動平均用バッファ
+// フィルター用：タイピング振動を丸めるための移動平均バッファ
 var lastX1 = 0, lastX2 = 0, lastX3 = 0, lastX4 = 0;
 var lastY1 = 0, lastY2 = 0, lastY3 = 0, lastY4 = 0;
 var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0, lastZ4 = 0;
@@ -180,7 +182,6 @@ for (var i = 0; i < 100; i++) {
 }
 
 var audioCtx = null;
-var maxMeasuredShindo = -1.0;
 var isSystemRunning = false;
 
 var config = {
@@ -215,16 +216,6 @@ function initSystem() {
     }
 }
 
-// 最高震度の定期的な減衰処理（揺れが収まったら、1秒ごとにゆっくり数値を下げる）
-setInterval(function() {
-    if (!isSystemRunning) return;
-    if (maxMeasuredShindo > -1.0) {
-        maxMeasuredShindo -= 0.12; // 減衰速度をより自然に調整
-        if (maxMeasuredShindo < -1.0) maxMeasuredShindo = -1.0;
-        updateDisplay(-1, -1, maxMeasuredShindo);
-    }
-}, 1000);
-
 function startSeismometer() {
     isSystemRunning = true;
     document.getElementById('start-btn').style.display = 'none';
@@ -239,10 +230,9 @@ function startSeismometer() {
         // 1. ハードウェア生データの合成加速度
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
         
-        // 【安全ガード】非数や無限大を強制遮断
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
 
-        // 2. 高精度移動平均フィルター（タイピングなどのガタガタした極小の高周波ノイズのみを遮断）
+        // 2. 移動平均フィルター（高周波のタイピング衝撃を遮断）
         var fx = (rx + lastX1 + lastX2 + lastX3 + lastX4) / 5;
         var fy = (ry + lastY1 + lastY2 + lastY3 + lastY4) / 5;
         var fz = (rz + lastZ1 + lastZ2 + lastZ3 + lastZ4) / 5;
@@ -252,10 +242,9 @@ function startSeismometer() {
         lastY4 = lastY3; lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
         lastZ4 = lastZ3; lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // 3. フィルター通過後の「地震動成分」の算出
+        // 3. フィルター通過後の地震動成分
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
         
-        // スマホの衝突や落下ノイズによる過大値をガード（上限2000gal固定）
         if (isNaN(filteredGal) || !isFinite(filteredGal)) { filteredGal = 0; }
         if (filteredGal > 2000) { filteredGal = 2000; }
 
@@ -271,7 +260,7 @@ function startSeismometer() {
             sampleWindow.shift();
         }
 
-        // 5. 【バグ根絶】手動ループによる安全な最小値（気象庁の継続揺れ代表値）の計算
+        // 5. 手動ループによる最小値の計算（最新0.3秒間の底堅い揺れの強さ）
         var a = 0;
         if (sampleWindow.length > 0) {
             a = sampleWindow[0].gal; // 最初の要素で初期化
@@ -284,33 +273,29 @@ function startSeismometer() {
         
         if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
 
-        // 6. 対数計算と計測震度の算出（感度復活チューニング）
+        // 6. リアルタイム計測震度の算出（減衰処理はせず、常に最新値をそのまま表示）
         var currentShindo = -1.0;
-        if (a >= 0.01) { // しきい値を0.01galまで広げ、小さな揺れも取りこぼさないように変更
+        if (a >= 0.01) { 
             var logVal = Math.log10(a);
             if (isFinite(logVal)) {
                 currentShindo = 2.0 * logVal + 0.94;
             }
         }
 
-        // 震度の限界上限・下限ガード（絶対にInfinityにならない防御壁）
+        // 安全上限・下限ガード
         if (isNaN(currentShindo) || !isFinite(currentShindo) || currentShindo < -1.0) {
             currentShindo = -1.0;
         }
         if (currentShindo > 7.0) { currentShindo = 7.0; }
 
-        if (currentShindo > maxMeasuredShindo) {
-            maxMeasuredShindo = currentShindo;
-        }
-
-        // アラーム判定
+        // アラーム判定（その瞬間の震度がしきい値を超えている場合のみ鳴る）
         if (currentShindo >= config.threshold) {
             triggerAlarm();
         } else {
             stopAlarmEffects();
         }
 
-        updateDisplay(rawGal, filteredGal, maxMeasuredShindo);
+        updateDisplay(rawGal, filteredGal, currentShindo);
     });
 }
 
