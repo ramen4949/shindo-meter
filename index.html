@@ -3,75 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>プロフェッショナル計測震度計</title>
+    <title>高性能リアルタイム計測震度計</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
             text-align: center;
-            background-color: #0f172a;
-            color: #f8fafc;
-            padding: 10px;
+            background-color: #f0f2f5;
+            padding: 20px;
             margin: 0;
-            overflow-x: hidden;
+            color: #333;
             transition: background-color 0.1s ease;
         }
+        /* 警告時の点滅用アニメーション */
         @keyframes flash {
-            0% { background-color: #0f172a; }
-            50% { background-color: #7f1d1d; }
-            100% { background-color: #0f172a; }
+            0% { background-color: #f0f2f5; }
+            50% { background-color: #ffcccc; }
+            100% { background-color: #f0f2f5; }
         }
         body.alarm-active {
             animation: flash 0.4s infinite;
         }
         .container {
-            max-width: 460px;
-            margin: 10px auto;
-            background: #1e293b;
-            padding: 20px;
-            border-radius: 20px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
-            border: 1px solid #334155;
+            max-width: 420px;
+            margin: 20px auto;
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             text-align: left;
         }
-        h2 { margin: 0 0 15px 0; font-size: 22px; color: #38bdf8; text-align: center; }
+        h2 { margin-top: 0; font-size: 22px; color: #222; text-align: center; }
         button {
             font-size: 16px;
-            padding: 14px;
-            background-color: #38bdf8;
-            color: #0f172a;
+            padding: 14px 28px;
+            background-color: #007bff;
+            color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
             width: 100%;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.3);
             transition: all 0.2s;
             margin-bottom: 15px;
         }
-        button:hover { background-color: #7dd3fc; }
+        button:active { transform: scale(0.98); }
         .result-box {
-            margin: 15px 0;
+            margin: 25px 0;
             padding: 20px;
-            background: #0f172a;
-            border-radius: 15px;
-            border: 1px solid #334155;
+            background: #fafafa;
+            border-radius: 12px;
+            border: 1px solid #eee;
             text-align: center;
-            position: relative;
         }
-        .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
+        .label { font-size: 14px; color: #666; font-weight: 500; }
         #shindo-class {
             font-size: 76px;
             font-weight: 900;
             color: #ef4444;
-            margin: 5px 0;
-            text-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+            margin: 10px 0;
             line-height: 1;
         }
-        #shindo-val { font-size: 22px; color: #e2e8f0; font-weight: bold; }
+        #shindo-val { font-size: 22px; color: #333; font-weight: bold; }
         
+        /* グラフエリア */
         .graph-container {
             margin: 15px 0;
-            background: #0f172a;
-            border: 1px solid #334155;
+            background: #ffffff;
+            border: 1px solid #ddd;
             border-radius: 12px;
             overflow: hidden;
         }
@@ -83,18 +82,19 @@
             gap: 10px;
             margin-top: 15px;
         }
-        .metric-card { background: #0f172a; padding: 10px; border-radius: 10px; border: 1px solid #334155; }
-        .metric-card div { color: #94a3b8; font-size: 11px; margin-bottom: 2px; }
-        .metric-card span { font-size: 15px; font-weight: bold; color: #f8fafc; font-family: monospace; }
+        .metric-card { background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #eee; text-align: center; }
+        .metric-card div { color: #666; font-size: 12px; margin-bottom: 2px; }
+        .metric-card span { font-size: 16px; font-weight: bold; color: #111; font-family: monospace; }
         
+        /* 設定パネル */
         .settings-panel {
-            background: #0f172a;
-            border: 1px solid #334155;
+            background: #f8f9fa;
+            border: 1px solid #eee;
             border-radius: 15px;
             padding: 15px;
             margin-top: 15px;
         }
-        .settings-title { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 5px; }
+        .settings-title { font-size: 14px; font-weight: bold; color: #007bff; margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
         .setting-item {
             display: flex;
             justify-content: space-between;
@@ -102,12 +102,12 @@
             margin-bottom: 12px;
             font-size: 13px;
         }
-        .setting-item label { color: #e2e8f0; }
+        .setting-item label { color: #333; }
         .setting-item input[type="range"], .setting-item select {
-            width: 150px;
-            background: #1e293b;
-            color: white;
-            border: 1px solid #334155;
+            width: 140px;
+            background: white;
+            color: #333;
+            border: 1px solid #ccc;
             border-radius: 5px;
             padding: 3px;
         }
@@ -118,7 +118,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 3.0</h2>
+    <h2>計測震度システム Ver 3.5</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -127,6 +127,7 @@
         <div id="shindo-val">計測震度: --</div>
     </div>
 
+    <!-- リアルタイムグラフ -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -142,6 +143,7 @@
         </div>
     </div>
 
+    <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -165,38 +167,40 @@
         </div>
     </div>
 </div>
-
 <script>
-// 配列記号が削られないよう対策（新規の配列作成方式を適用）
-let sampleWindow = new Array(); 
-const WINDOW_DURATION = 300; 
+// 状態変数とバッファの設定
+var sampleWindow = new Array(); 
+var WINDOW_DURATION = 300; 
 
-// 2次IIRフィルターの遅延用配列 [v0, v1, v2]
-let yv_x = new Array(0, 0, 0);
-let yv_y = new Array(0, 0, 0);
-let yv_z = new Array(0, 0, 0);
+// 2次IIRフィルターの遅延用変数（エラーの原因となる配列表現を完全に排除）
+var vx0 = 0, vx1 = 0, vx2 = 0;
+var vy0 = 0, vy1 = 0, vy2 = 0;
+var vz0 = 0, vz1 = 0, vz2 = 0;
 
-const canvas = document.getElementById('wave-graph');
-const ctx = canvas.getContext('2d');
-let graphData = new Array(100).fill(0);
+var canvas = document.getElementById('wave-graph');
+var ctx = canvas.getContext('2d');
+var graphData = new Array(100);
+for (var i = 0; i < 100; i++) {
+    graphData[i] = 0;
+}
 
-let audioCtx = null;
-let maxMeasuredShindo = -1.0;
-let isSystemRunning = false;
+var audioCtx = null;
+var maxMeasuredShindo = -1.0;
+var isSystemRunning = false;
 
-let config = {
+var config = {
     volume: 0.5,
     threshold: 2.5 
 };
 
-const thresholdMap = { "1": 0.5, "2": 1.5, "3": 2.5, "4": 3.5, "5弱": 4.5 };
+var thresholdMap = { "1": 0.5, "2": 1.5, "3": 2.5, "4": 3.5, "5弱": 4.5 };
 
 function updateSettings() {
-    const volVal = document.getElementById('volume-slider').value;
+    var volVal = document.getElementById('volume-slider').value;
     document.getElementById('vol-txt').innerText = volVal;
     config.volume = volVal / 100;
 
-    const thresClass = document.getElementById('threshold-select').value;
+    var thresClass = document.getElementById('threshold-select').value;
     config.threshold = thresholdMap[thresClass];
 }
 
@@ -207,7 +211,7 @@ function initSystem() {
     
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
-            .then(permissionState => {
+            .then(function(permissionState) {
                 if (permissionState === 'granted') { startSeismometer(); } 
                 else { alert('センサーの許可が必要です。'); }
             }).catch(console.error);
@@ -215,7 +219,8 @@ function initSystem() {
         startSeismometer();
     }
 }
-// 定期減衰タイマー処理（揺れが消えた後、最大表示震度をゆっくり戻す）
+
+// 最大判定値の定期的な減衰処理
 setInterval(function() {
     if (!isSystemRunning) return;
     if (maxMeasuredShindo > -1.0) {
@@ -229,7 +234,6 @@ function startSeismometer() {
     isSystemRunning = true;
     document.getElementById('start-btn').style.display = 'none';
     
-    // グラフ描画開始
     requestAnimationFrame(drawGraph);
 
     window.addEventListener('devicemotion', function(event) {
@@ -237,32 +241,45 @@ function startSeismometer() {
         let ry = event.acceleration.y || 0;
         let rz = event.acceleration.z || 0;
 
-        let rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
+        var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
 
-        // タイピングの高周波を完璧に落とす地震動成分抽出フィルター
-        let fx = bpf(rx, yv_x);
-        let fy = bpf(ry, yv_y);
-        let fz = bpf(rz, yv_z);
+        // X軸バンドパスフィルタ (0.5Hz〜5.0Hz)
+        vx2 = vx1; 
+        vx1 = vx0; 
+        vx0 = (rx * 0.046) + (0.907 * vx1) - (1.814 * vx2);
+        var fx = vx0 - vx2;
 
-        let filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
+        // Y軸バンドパスフィルタ
+        vy2 = vy1; 
+        vy1 = vy0; 
+        vy0 = (ry * 0.046) + (0.907 * vy1) - (1.814 * vy2);
+        var fy = vy0 - vy2;
+
+        // Z軸バンドパスフィルタ
+        vz2 = vz1; 
+        vz1 = vz0; 
+        vz0 = (rz * 0.046) + (0.907 * vz1) - (1.814 * vz2);
+        var fz = vz0 - vz2;
+
+        var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
 
         graphData.push(filteredGal);
         graphData.shift();
 
-        let now = performance.now();
+        var now = performance.now();
         sampleWindow.push({ time: now, gal: filteredGal });
 
         while (sampleWindow.length > 0 && sampleWindow[0].time < now - WINDOW_DURATION) {
             sampleWindow.shift();
         }
 
-        let a = 0;
+        var a = 0;
         if (sampleWindow.length > 0) {
-            let gals = sampleWindow.map(function(s) { return s.gal; });
+            var gals = sampleWindow.map(function(s) { return s.gal; });
             a = Math.min.apply(null, gals);
         }
 
-        let currentShindo = -1.0;
+        var currentShindo = -1.0;
         if (a > 0.05) {
             currentShindo = 2.0 * Math.log10(a) + 0.94;
         }
@@ -281,15 +298,7 @@ function startSeismometer() {
     });
 }
 
-// 2次IIRバンドパスフィルタの正確な配列内演算式
-function bpf(input, v) {
-    v[0] = v[1]; 
-    v[1] = v[2]; 
-    v[2] = (input * 0.046) + (0.907 * v[0]) - (1.814 * v[1]);
-    return v[2] - v[0];
-}
-
-let alarmInterval = null;
+var alarmInterval = null;
 function triggerAlarm() {
     document.body.classList.add('alarm-active');
     if (navigator.vibrate) navigator.vibrate(200);
@@ -311,8 +320,8 @@ function stopAlarmEffects() {
 function playBeep() {
     if (!audioCtx || config.volume === 0) return;
     try {
-        let osc = audioCtx.createOscillator();
-        let gainNode = audioCtx.createGain();
+        var osc = audioCtx.createOscillator();
+        var gainNode = audioCtx.createGain();
         
         osc.connect(gainNode);
         gainNode.connect(audioCtx.destination);
@@ -336,28 +345,28 @@ function testAlertAudio() {
 
 function drawGraph() {
     if (!isSystemRunning) return;
-
+    
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = 120;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = '#334155';
+    
+    ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
-    for (let i = 1; i < 4; i++) {
-        let y = (canvas.height / 4) * i;
+    for (var i = 1; i < 4; i++) {
+        var y = (canvas.height / 4) * i;
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 
     ctx.beginPath();
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#007bff';
     ctx.lineWidth = 2;
-
-    let sliceWidth = canvas.width / (graphData.length - 1);
-    for (let i = 0; i < graphData.length; i++) {
-        let x = i * sliceWidth;
-        let y = canvas.height - (Math.min(graphData[i], 50) / 50 * canvas.height);
-
+    
+    var sliceWidth = canvas.width / (graphData.length - 1);
+    for (var i = 0; i < graphData.length; i++) {
+        var x = i * sliceWidth;
+        var y = canvas.height - (Math.min(graphData[i], 50) / 50 * canvas.height);
+        
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
@@ -369,8 +378,8 @@ function updateDisplay(rawGal, filteredGal, shindo) {
     if (rawGal >= 0) document.getElementById('raw-gal').innerText = rawGal.toFixed(2);
     if (filteredGal >= 0) document.getElementById('filtered-gal').innerText = filteredGal.toFixed(2);
 
-    let shindoStr = "--";
-    let classStr = "0";
+    var shindoStr = "--";
+    var classStr = "0";
 
     if (shindo < 0.5) { shindoStr = "0.0"; classStr = "0"; }
     else if (shindo < 1.5) { shindoStr = shindo.toFixed(1); classStr = "1"; }
