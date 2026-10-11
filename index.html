@@ -115,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 4.0</h2>
+    <h2>計測震度システム Ver 4.5</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -163,11 +163,11 @@
     </div>
 </div>
 <script>
-// 状態変数とバッファの設定
+// 状態変数とバッファの設定（配列記号対策済み）
 var sampleWindow = new Array(); 
 var WINDOW_DURATION = 300; // 0.3秒間
 
-// フィルター用：過去3回分の生データを保存する変数（絶対に暴走・増幅しないFIR方式）
+// フィルター用：過去3回分の生データを保存する変数
 var lastX1 = 0, lastX2 = 0, lastX3 = 0;
 var lastY1 = 0, lastY2 = 0, lastY3 = 0;
 var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0;
@@ -236,12 +236,13 @@ function startSeismometer() {
         let ry = event.acceleration.y || 0;
         let rz = event.acceleration.z || 0;
 
-        // ハードウェア生データの合成加速度
+        // 1. ハードウェア生データの合成加速度
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
-        if (isNaN(rawGal) || !isFinite(rawGal)) rawGal = 0;
+        
+        // 【超強力安全ガード】非数や無限大を強制遮断
+        if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
 
-        // 移動平均・差分をベースにした、絶対に自己増殖（暴走）しない安全な低周波抽出フィルター
-        // タイピングのような一瞬・連続のトゲ（高周波）は足し引きで相殺されます
+        // 2. 移動平均と差分をベースにした、絶対に自己増殖しない安全な周波数フィルター
         var fx = (rx + lastX1 + lastX2 + lastX3) / 4 - lastX1;
         var fy = (ry + lastY1 + lastY2 + lastY3) / 4 - lastY1;
         var fz = (rz + lastZ1 + lastZ2 + lastZ3) / 4 - lastZ1;
@@ -251,40 +252,52 @@ function startSeismometer() {
         lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
         lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // フィルター通過後の地震動成分
+        // 3. フィルター通過後の地震動成分
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
         
-        // 【安全ガード】スマホの衝突ノイズによる過大値を制限し、Infinity（無限大）化を完全に防ぐ
-        if (isNaN(filteredGal) || !isFinite(filteredGal)) filteredGal = 0;
-        if (filteredGal > 2000) filteredGal = 2000; // 地球上で観測される最大クラスの加速度（2000gal）を上限に設定
+        // スマホの衝突衝撃による過大ノイズをカット（上限を2000galに固定）
+        if (isNaN(filteredGal) || !isFinite(filteredGal)) { filteredGal = 0; }
+        if (filteredGal > 2000) { filteredGal = 2000; }
 
         graphData.push(filteredGal);
         graphData.shift();
 
+        // 4. 時系列バッファへ蓄積
         var now = performance.now();
         sampleWindow.push({ time: now, gal: filteredGal });
 
-        while (sampleWindow.length > 0 && sampleWindow.time < now - WINDOW_DURATION) {
+        // 0.3秒より昔の古いデータを廃棄
+        while (sampleWindow.length > 0 && sampleWindow[0].time < now - WINDOW_DURATION) {
             sampleWindow.shift();
         }
 
+        // 5. 【バグ根絶】Math.min.applyを使わず、手動ループで安全に最小値を計算
         var a = 0;
         if (sampleWindow.length > 0) {
-            var gals = sampleWindow.map(function(s) { return s.gal; });
-            a = Math.min.apply(null, gals); // 0.3秒間で一番「継続」している揺れの強さを代表値にする
+            a = sampleWindow[0].gal; // 最初の要素で初期化
+            for (var idx = 1; idx < sampleWindow.length; idx++) {
+                if (sampleWindow[idx].gal < a) {
+                    a = sampleWindow[idx].gal;
+                }
+            }
         }
         
-        if (isNaN(a) || !isFinite(a)) a = 0;
+        if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
 
+        // 6. 対数計算と計測震度の算出（二重ガードで-InfinityやInfinityを完全防止）
         var currentShindo = -1.0;
-        if (a > 0.1) { // わずかな生活ノイズの境界線
-            // 気象庁公式の対数計算式
-            currentShindo = 2.0 * Math.log10(a) + 0.94;
+        if (a >= 0.05) { // 0.05gal以上のときのみ計算（0の対数による-Infinity化を防ぐ）
+            var logVal = Math.log10(a);
+            if (isFinite(logVal)) {
+                currentShindo = 2.0 * logVal + 0.94;
+            }
         }
 
-        // 【安全ガード】計算結果の安全上限・下限をチェック
-        if (isNaN(currentShindo) || !isFinite(currentShindo)) currentShindo = -1.0;
-        if (currentShindo > 7.0) currentShindo = 7.0; 
+        // 震度の限界上限・下限ガード
+        if (isNaN(currentShindo) || !isFinite(currentShindo) || currentShindo < -1.0) {
+            currentShindo = -1.0;
+        }
+        if (currentShindo > 7.0) { currentShindo = 7.0; }
 
         if (currentShindo > maxMeasuredShindo) {
             maxMeasuredShindo = currentShindo;
