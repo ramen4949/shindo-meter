@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>リアルタイム計測震度計 (即時追従版)</title>
+    <title>リアルタイム計測震度計</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -28,7 +28,7 @@
             background: white;
             padding: 25px;
             border-radius: 16px;
-            box-shadow: 0 4px 15 rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             text-align: left;
         }
         h2 { margin-top: 0; font-size: 22px; color: #222; text-align: center; }
@@ -115,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 7.0</h2>
+    <h2>計測震度システム</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -164,21 +164,22 @@
 </div>
 
 <script>
-// 状態変数とバッファの設定（システム文字バグ対策として独自オブジェクトを使用）
-var sampleWindow = new Array(); 
-var WINDOW_DURATION = 300; 
+// 100個のデータを保持する、絶対にバグの起きない連番オブジェクト定義
+var graphObj = {};
+for (var i = 0; i < 100; i++) {
+    graphObj[i] = 0;
+}
 
-// フィルター用：移動平均バッファ
+// 過去0.3秒間の揺れを監視する、絶対にバグの起きない連番オブジェクト定義
+var windowObj = {};
+var windowSize = 0;
+
 var lastX1 = 0, lastX2 = 0, lastX3 = 0, lastX4 = 0;
 var lastY1 = 0, lastY2 = 0, lastY3 = 0, lastY4 = 0;
 var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0, lastZ4 = 0;
 
 var canvas = document.getElementById('wave-graph');
 var ctx = canvas.getContext('2d');
-var graphData = new Array(100);
-for (var i = 0; i < 100; i++) {
-    graphData[i] = 0;
-}
 
 var audioCtx = null;
 var isSystemRunning = false;
@@ -225,9 +226,8 @@ function startSeismometer() {
         let ry = event.acceleration.y || 0;
         let rz = event.acceleration.z || 0;
 
-        // 1. ハードウェア生データの合成加速度
+        // 1. 生データの合成加速度を算出
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
-        
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
 
         // 2. 移動平均フィルター（高周波のタイピング衝撃を遮断）
@@ -240,39 +240,44 @@ function startSeismometer() {
         lastY4 = lastY3; lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
         lastZ4 = lastZ3; lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // 3. フィルター通過後の地震動成分
+        // 3. 地震動成分の算出
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
-        
         if (isNaN(filteredGal) || !isFinite(filteredGal)) { filteredGal = 0; }
         if (filteredGal > 2000) { filteredGal = 2000; }
 
-        graphData.push(filteredGal);
-        graphData.shift();
-
-        // 4. 時系列バッファへ蓄積
-        var now = performance.now();
-        sampleWindow.push({ time: now, gal: filteredGal });
-
-        // 0.3秒より昔の古いデータを高速廃棄
-        while (sampleWindow.length > 0 && sampleWindow.time < now - WINDOW_DURATION) {
-            sampleWindow.shift();
+        // グラフオブジェクトを1ステップずつずらし更新
+        for (var k = 0; k < 99; k++) {
+            graphObj[k] = graphObj[k + 1];
         }
+        graphObj[99] = filteredGal;
 
-        // 5. 【記号消失バグ対策版】手動ループによる最小値の安全な計算
+        // 4. 最新0.3秒間のデータをオブジェクトに時間記録
+        var now = performance.now();
+        windowObj[windowSize] = { time: now, gal: filteredGal };
+        windowSize = windowSize + 1;
+
+        // 0.3秒より古いデータを詰め直して廃棄
+        var tempObj = {};
+        var tempSize = 0;
+        for (var idx = 0; idx < windowSize; idx++) {
+            if (windowObj[idx].time >= now - WINDOW_DURATION) {
+                tempObj[tempSize] = windowObj[idx];
+                tempSize = tempSize + 1;
+            }
+        }
+        windowObj = tempObj;
+        windowSize = tempSize;
+
+        // 5. 最小値（最新0.3秒間の底固い揺れの強さ）を手動計算
         var a = 0;
-        if (sampleWindow.length > 0) {
-            // 配列の先頭要素をブラケットを使わずに安全に抽出
-            var firstItem = sampleWindow.slice(0, 1).pop();
-            a = firstItem.gal; 
-            
-            for (var idx = 1; idx < sampleWindow.length; idx++) {
-                var currentItem = sampleWindow.slice(idx, idx + 1).pop();
-                if (currentItem && currentItem.gal < a) {
-                    a = currentItem.gal;
+        if (windowSize > 0) {
+            a = windowObj[0].gal;
+            for (var idx = 1; idx < windowSize; idx++) {
+                if (windowObj[idx].gal < a) {
+                    a = windowObj[idx].gal;
                 }
             }
         }
-        
         if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
 
         // 6. リアルタイム計測震度の算出
@@ -365,10 +370,10 @@ function drawGraph() {
     ctx.strokeStyle = '#007bff';
     ctx.lineWidth = 2;
     
-    var sliceWidth = canvas.width / (graphData.length - 1);
-    for (var i = 0; i < graphData.length; i++) {
+    var sliceWidth = canvas.width / 99;
+    for (var i = 0; i < 100; i++) {
         var x = i * sliceWidth;
-        var y = canvas.height - (Math.min(graphData[i], 50) / 50 * canvas.height);
+        var y = canvas.height - (Math.min(graphObj[i], 50) / 50 * canvas.height);
         
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
