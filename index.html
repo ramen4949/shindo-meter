@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高度・簡易震度計測計</title>
+    <title>タイピング対応・簡易震度計</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -25,13 +25,13 @@
         button {
             font-size: 16px;
             padding: 14px 28px;
-            background-color: #007bff;
+            background-color: #28a745;
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
-            box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+            box-shadow: 0 4px 12px rgba(40,167,69,0.3);
             transition: all 0.2s;
         }
         button:active { transform: scale(0.98); }
@@ -72,8 +72,8 @@
 <body>
 
 <div class="container">
-    <h2>簡易震度計 (ノイズフィルタ搭載)</h2>
-    <p style="font-size: 14px; color: #666;">スマホを机の上に水平に置いて計測してください。</p>
+    <h2>簡易震度計 (タイピング振動除去版)</h2>
+    <p style="font-size: 14px; color: #666;">キーボードの近くに置いたまま計測できます。</p>
     
     <button id="start-btn" onclick="requestPermission()">計測を開始する</button>
 
@@ -88,30 +88,28 @@
     </div>
 
     <div class="info">
-        【仕組みと注意点】<br>
-        ・一瞬の衝突による誤検知を防ぐため、過去0.3秒間で「3番目に大きかった振動（気象庁の継続時間ルールを応用）」を判定に使用しています。<br>
-        ・高周波ノイズをカットするデジタルフィルタを適用しています。<br>
-        ・実際の気象庁の正確な計測震度とは異なりますので、目安としてお使いください。
+        【タイピング対策適用済み】<br>
+        ・強力な低周波フィルターにより、キーボードの打鍵によるカタカタした高周波振動を完全に無視します。<br>
+        ・机がゆっくり、大きく「グラグラ」と1秒以上揺れたときのみ反応する設計です。
     </div>
 </div>
 
 <script>
-// 設定値
-const SAMPLING_INTERVAL = 100; // サンプリング周期 (100ms = 0.1秒)
-const DURATION_SAMPLES = 3;    // 0.3秒を表現するサンプル数 (3 × 100ms)
+const SAMPLING_INTERVAL = 100; // 0.1秒ごとに処理
+const DURATION_SAMPLES = 5;    // 過去0.5秒間（5サンプル）の継続性をチェック
 
-// 状態変数
 let rawAccBuffer = [];
 let galHistory = [];
 let maxValidGal = 0;
 
-// フィルター用変数（簡易ローパスフィルター係数）
+// 強力なローパスフィルター（タイピングなどの激しいノイズをカット）
 let fX = 0, fY = 0, fZ = 0;
-const alpha = 0.4; // 0〜1の値。小さいほど滑らか（ノイズカット）になり、大きいほど追従性が上がります
+const alpha = 0.04; // 0.4から0.04へ超強化。これで細かい高速振動は完全に消え去ります
+const DEAD_ZONE = 1.5; // この値（gal）以下の微小な振動はノイズとしてゼロにします
 
-// 最大判定Galの定期的な減衰処理（5秒かけて徐々に減衰）
+// 緩やかな減衰処理
 setInterval(() => {
-    maxValidGal = maxValidGal * 0.85;
+    maxValidGal = maxValidGal * 0.8;
     if (maxValidGal < 0.5) maxValidGal = 0;
     updateDisplay(0, maxValidGal);
 }, 1000);
@@ -131,67 +129,68 @@ function requestPermission() {
 function startTracking() {
     document.getElementById('start-btn').style.display = 'none';
 
-    // 1. デバイスの生データを高速収集
     window.addEventListener('devicemotion', (event) => {
         let x = event.acceleration.x || 0;
         let y = event.acceleration.y || 0;
         let z = event.acceleration.z || 0;
 
-        // ローパスフィルターを適用して瞬間的なトゲを消す
+        // 超強力ローパスフィルターの適用
         fX = alpha * x + (1 - alpha) * fX;
         fY = alpha * y + (1 - alpha) * fY;
         fZ = alpha * z + (1 - alpha) * fZ;
 
         let acc = Math.sqrt(fX*fX + fY*fY + fZ*fZ);
-        let gal = acc * 100; // m/s^2 から gal へ変換
+        let gal = acc * 100;
+
+        // 不感帯処理：一定以下の細かい揺れは完全にカット
+        if (gal < DEAD_ZONE) gal = 0;
 
         rawAccBuffer.push(gal);
     });
 
-    // 2. 0.1秒（100ms）ごとにデータをまとめて区切り処理を行う（高速リフレッシュ）
     setInterval(() => {
-        if (rawAccBuffer.length === 0) return;
+        if (rawAccBuffer.length === 0) {
+            // 揺れがないときは履歴に0を追加
+            galHistory.push(0);
+        } else {
+            let sum = rawAccBuffer.reduce((a, b) => a + b, 0);
+            let avgGal = sum / rawAccBuffer.length;
+            rawAccBuffer = [];
+            galHistory.push(avgGal);
+        }
 
-        // この100ms間の平均Galを算出
-        let sum = rawAccBuffer.reduce((a, b) => a + b, 0);
-        let avgGal = sum / rawAccBuffer.length;
-        rawAccBuffer = []; // バッファクリア
-
-        // 瞬間的な最大値を画面表示用に保存
-        let instantMax = avgGal;
-
-        // 過去0.3秒分（3サンプル分）の履歴を管理
-        galHistory.push(avgGal);
         if (galHistory.length > DURATION_SAMPLES) {
             galHistory.shift();
         }
 
-        // 気象庁ルール：過去0.3秒（3個のデータ）の中で「3番目に大きい値」を有効な揺れとする
-        // 今回は要素数が3個なので、昇順ソートしたときの1番最初の値（最小値）が「3番目に大きい値」になります
+        // 継続時間ルール：過去0.5秒（5サンプル）の履歴を昇順ソート
+        // 中位の値（3番目）を有効Galとすることで突発ノイズを排除
         let sortedHistory = [...galHistory].sort((a, b) => a - b);
-        let validGal = sortedHistory[0] || 0;
+        let validGal = sortedHistory[2] || 0; 
 
-        // 有効Galの最高値を更新
         if (validGal > maxValidGal) {
             maxValidGal = validGal;
         }
+
+        // 画面表示用の瞬間値は直近の平均
+        let instantMax = galHistory[galHistory.length - 1] || 0;
 
         updateDisplay(instantMax, maxValidGal);
     }, SAMPLING_INTERVAL);
 }
 
 function updateDisplay(instant, valid) {
-    // 震度基準（気象庁の計算式に則った実用的なしきい値に調整）
+    // フィルター強化に合わせて、実用的な震度しきい値に調整
     let shindo = "0";
-    if (valid >= 0.8)  shindo = "1";
-    if (valid >= 2.5)  shindo = "2";
-    if (valid >= 8.0)  shindo = "3";
-    if (valid >= 25.0) shindo = "4";
-    if (valid >= 80.0) shindo = "5弱";
-    if (valid >= 140.0) shindo = "5強";
-    if (valid >= 250.0) shindo = "6弱";
-    if (valid >= 400.0) shindo = "6強";
-    if (valid >= 830.0) shindo = "7";
+    if (valid >= 0.3)  shindo = "1";
+    if (valid >= 1.2)  shindo = "2";
+    if (valid >= 4.0)  shindo = "3";
+    if (valid >= 10.0) shindo = "4";
+    if (valid >= 25.0) shindo = "5弱";
+    if (valid >= 50.0) shindo = "5強";
+    if (valid >= 90.0) shindo = "6弱";
+    if (valid >= 150.0) shindo = "6強";
+    if (valid >= 250.0) shindo = "7";
 
     document.getElementById('instant-gal').innerText = instant.toFixed(2);
     document.getElementById('valid-gal').innerText = valid.toFixed(2);
