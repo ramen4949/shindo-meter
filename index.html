@@ -84,6 +84,20 @@
         .metric-card div { color: #666; font-size: 12px; margin-bottom: 2px; }
         .metric-card span { font-size: 16px; font-weight: bold; color: #111; font-family: monospace; }
         
+        .history-panel {
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 15px;
+            max-height: 140px;
+            overflow-y: auto;
+            text-align: left;
+        }
+        .history-title { font-size: 13px; font-weight: bold; color: #444; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+        #history-list { list-style: none; padding: 0; margin: 0; font-size: 12px; font-family: monospace; }
+        #history-list li { padding: 4px 0; border-bottom: 1px dashed #eee; display: flex; justify-content: space-between; color: #555; }
+
         .settings-panel {
             background: #f8f9fa;
             border: 1px solid #eee;
@@ -141,6 +155,14 @@
         </div>
     </div>
 
+    <!-- 履歴パネル -->
+    <div class="history-panel">
+        <div class="history-title">📜 震度変化履歴</div>
+        <ul id="history-list">
+            <li style="color: #999; text-align: center;">履歴はありません</li>
+        </ul>
+    </div>
+
     <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
@@ -187,6 +209,7 @@ var thresholdMap = { "1": 0.5, "2": 1.5, "3": 2.5, "4": 3.5, "5弱": 4.5 };
 var currentRawGal = 0;
 var smoothedGal = 0;
 var smoothedShindo = 0.0;
+var lastRecordedClass = "0";
 
 // PCシミュレーション用変数
 var simVal = 0;
@@ -256,7 +279,7 @@ function startSeismometer() {
 function updateLoop() {
     if (!isSystemRunning) return;
 
-    smoothedGal = smoothedGal * 0.6 + currentRawGal * 0.4;
+    smoothedGal = smoothedGal * 0.5 + currentRawGal * 0.5;
     if (smoothedGal > 2000) { smoothedGal = 2000; }
 
     graphBuffer.shift();
@@ -271,7 +294,7 @@ function updateLoop() {
     }
     if (targetShindo > 7.0) { targetShindo = 7.0; }
 
-    smoothedShindo = smoothedShindo * 0.7 + targetShindo * 0.3;
+    smoothedShindo = smoothedShindo * 0.6 + targetShindo * 0.4;
 
     if (smoothedShindo >= config.threshold) {
         triggerAlarm();
@@ -382,6 +405,32 @@ function updateDisplay(rawGal, filteredGal, shindo) {
 
     document.getElementById('shindo-class').innerText = classStr;
     document.getElementById('shindo-val').innerText = "計測震度: " + shindoStr;
+
+    // 震度階級が変わったときに履歴を追加する（震度0から1以上になった時、またはクラスが変わった時）
+    if (classStr !== lastRecordedClass) {
+        lastRecordedClass = classStr;
+        addHistory(classStr, shindoStr);
+    }
+}
+
+function addHistory(classStr, shindoStr) {
+    var now = new Date();
+    var timeStr = String(now.getHours()).padStart(2, '0') + ':' + 
+                  String(now.getMinutes()).padStart(2, '0') + ':' + 
+                  String(now.getSeconds()).padStart(2, '0');
+
+    var listElem = document.getElementById('history-list');
+    
+    // 初回のエレメント（履歴はありません）を削除
+    if (listElem.children.length === 1 && listElem.children[0].style.color === 'rgb(153, 153, 153)') {
+        listElem.innerHTML = '';
+    }
+
+    var li = document.createElement('li');
+    li.innerHTML = `<span>[${timeStr}]</span> <span><b>震度 ${classStr}</b> (計測: ${shindoStr})</span>`;
+    
+    // 新しい履歴を一番上に追加
+    listElem.insertBefore(li, listElem.firstChild);
 }
 </script>
 </body>
