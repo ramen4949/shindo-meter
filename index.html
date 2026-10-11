@@ -115,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 4.5</h2>
+    <h2>計測震度システム Ver 5.0</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -163,14 +163,14 @@
     </div>
 </div>
 <script>
-// 状態変数とバッファの設定（配列記号対策済み）
+// 状態変数とバッファの設定
 var sampleWindow = new Array(); 
 var WINDOW_DURATION = 300; // 0.3秒間
 
-// フィルター用：過去3回分の生データを保存する変数
-var lastX1 = 0, lastX2 = 0, lastX3 = 0;
-var lastY1 = 0, lastY2 = 0, lastY3 = 0;
-var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0;
+// フィルター用：タイピング振動を上手に丸めるための移動平均用バッファ
+var lastX1 = 0, lastX2 = 0, lastX3 = 0, lastX4 = 0;
+var lastY1 = 0, lastY2 = 0, lastY3 = 0, lastY4 = 0;
+var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0, lastZ4 = 0;
 
 var canvas = document.getElementById('wave-graph');
 var ctx = canvas.getContext('2d');
@@ -215,11 +215,11 @@ function initSystem() {
     }
 }
 
-// 最大判定値の定期的な減衰処理（ゆっくり数値を戻す）
+// 最高震度の定期的な減衰処理（揺れが収まったら、1秒ごとにゆっくり数値を下げる）
 setInterval(function() {
     if (!isSystemRunning) return;
     if (maxMeasuredShindo > -1.0) {
-        maxMeasuredShindo -= 0.15;
+        maxMeasuredShindo -= 0.12; // 減衰速度をより自然に調整
         if (maxMeasuredShindo < -1.0) maxMeasuredShindo = -1.0;
         updateDisplay(-1, -1, maxMeasuredShindo);
     }
@@ -239,23 +239,23 @@ function startSeismometer() {
         // 1. ハードウェア生データの合成加速度
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
         
-        // 【超強力安全ガード】非数や無限大を強制遮断
+        // 【安全ガード】非数や無限大を強制遮断
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
 
-        // 2. 移動平均と差分をベースにした、絶対に自己増殖しない安全な周波数フィルター
-        var fx = (rx + lastX1 + lastX2 + lastX3) / 4 - lastX1;
-        var fy = (ry + lastY1 + lastY2 + lastY3) / 4 - lastY1;
-        var fz = (rz + lastZ1 + lastZ2 + lastZ3) / 4 - lastZ1;
+        // 2. 高精度移動平均フィルター（タイピングなどのガタガタした極小の高周波ノイズのみを遮断）
+        var fx = (rx + lastX1 + lastX2 + lastX3 + lastX4) / 5;
+        var fy = (ry + lastY1 + lastY2 + lastY3 + lastY4) / 5;
+        var fz = (rz + lastZ1 + lastZ2 + lastZ3 + lastZ4) / 5;
 
         // 過去の値を更新
-        lastX3 = lastX2; lastX2 = lastX1; lastX1 = rx;
-        lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
-        lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
+        lastX4 = lastX3; lastX3 = lastX2; lastX2 = lastX1; lastX1 = rx;
+        lastY4 = lastY3; lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
+        lastZ4 = lastZ3; lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // 3. フィルター通過後の地震動成分
+        // 3. フィルター通過後の「地震動成分」の算出
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
         
-        // スマホの衝突衝撃による過大ノイズをカット（上限を2000galに固定）
+        // スマホの衝突や落下ノイズによる過大値をガード（上限2000gal固定）
         if (isNaN(filteredGal) || !isFinite(filteredGal)) { filteredGal = 0; }
         if (filteredGal > 2000) { filteredGal = 2000; }
 
@@ -266,12 +266,12 @@ function startSeismometer() {
         var now = performance.now();
         sampleWindow.push({ time: now, gal: filteredGal });
 
-        // 0.3秒より昔の古いデータを廃棄
-        while (sampleWindow.length > 0 && sampleWindow[0].time < now - WINDOW_DURATION) {
+        // 0.3秒より昔の古いデータを高速廃棄
+        while (sampleWindow.length > 0 && sampleWindow.time < now - WINDOW_DURATION) {
             sampleWindow.shift();
         }
 
-        // 5. 【バグ根絶】Math.min.applyを使わず、手動ループで安全に最小値を計算
+        // 5. 【バグ根絶】手動ループによる安全な最小値（気象庁の継続揺れ代表値）の計算
         var a = 0;
         if (sampleWindow.length > 0) {
             a = sampleWindow[0].gal; // 最初の要素で初期化
@@ -284,16 +284,16 @@ function startSeismometer() {
         
         if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
 
-        // 6. 対数計算と計測震度の算出（二重ガードで-InfinityやInfinityを完全防止）
+        // 6. 対数計算と計測震度の算出（感度復活チューニング）
         var currentShindo = -1.0;
-        if (a >= 0.05) { // 0.05gal以上のときのみ計算（0の対数による-Infinity化を防ぐ）
+        if (a >= 0.01) { // しきい値を0.01galまで広げ、小さな揺れも取りこぼさないように変更
             var logVal = Math.log10(a);
             if (isFinite(logVal)) {
                 currentShindo = 2.0 * logVal + 0.94;
             }
         }
 
-        // 震度の限界上限・下限ガード
+        // 震度の限界上限・下限ガード（絶対にInfinityにならない防御壁）
         if (isNaN(currentShindo) || !isFinite(currentShindo) || currentShindo < -1.0) {
             currentShindo = -1.0;
         }
@@ -303,6 +303,7 @@ function startSeismometer() {
             maxMeasuredShindo = currentShindo;
         }
 
+        // アラーム判定
         if (currentShindo >= config.threshold) {
             triggerAlarm();
         } else {
