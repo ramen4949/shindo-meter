@@ -121,8 +121,8 @@
 
     <div class="result-box">
         <span class="label">現在のリアルタイム震度</span>
-        <div id="shindo-class">-</div>
-        <div id="shindo-val">計測震度: --</div>
+        <div id="shindo-class">0</div>
+        <div id="shindo-val">計測震度: 0.0</div>
     </div>
 
     <!-- リアルタイムグラフ -->
@@ -187,7 +187,6 @@ var thresholdMap = { "1": 0.5, "2": 1.5, "3": 2.5, "4": 3.5, "5弱": 4.5 };
 var currentRawGal = 0;
 var smoothedGal = 0;
 var smoothedShindo = 0.0;
-var hasStarted = false;
 
 // PCシミュレーション用変数
 var simVal = 0;
@@ -225,7 +224,6 @@ function startSeismometer() {
     isSystemRunning = true;
     document.getElementById('start-btn').style.display = 'none';
     
-    // センサーイベントでは常に最新の生データを保持するだけにする
     window.addEventListener('devicemotion', function(event) {
         var acc = event.acceleration;
         var rx = 0, ry = 0, rz = 0;
@@ -251,7 +249,6 @@ function startSeismometer() {
         currentRawGal = rawGal;
     });
 
-    // 一定間隔（約100ms＝10fps）で画面更新と計算をまとめて行い、速度と安定性を確保
     setInterval(updateLoop, 100);
     requestAnimationFrame(renderLoop);
 }
@@ -259,15 +256,12 @@ function startSeismometer() {
 function updateLoop() {
     if (!isSystemRunning) return;
 
-    // スムージング処理
     smoothedGal = smoothedGal * 0.6 + currentRawGal * 0.4;
     if (smoothedGal > 2000) { smoothedGal = 2000; }
 
-    // グラフバッファに追加
     graphBuffer.shift();
     graphBuffer.push(smoothedGal);
 
-    // 震度計算
     var targetShindo = 0.0;
     if (smoothedGal >= 1.0) { 
         var logVal = Math.log10(smoothedGal);
@@ -277,14 +271,8 @@ function updateLoop() {
     }
     if (targetShindo > 7.0) { targetShindo = 7.0; }
 
-    if (!hasStarted && smoothedGal >= 1.0) {
-        hasStarted = true;
-        smoothedShindo = targetShindo;
-    } else {
-        smoothedShindo = smoothedShindo * 0.7 + targetShindo * 0.3;
-    }
+    smoothedShindo = smoothedShindo * 0.7 + targetShindo * 0.3;
 
-    // アラーム判定
     if (smoothedShindo >= config.threshold) {
         triggerAlarm();
     } else {
@@ -351,7 +339,6 @@ function drawGraph() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // 補助グリッド線
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     for (var i = 1; i < 4; i++) {
@@ -359,7 +346,6 @@ function drawGraph() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 
-    // グラフ描画
     ctx.beginPath();
     ctx.strokeStyle = '#007bff';
     ctx.lineWidth = 2;
@@ -394,13 +380,8 @@ function updateDisplay(rawGal, filteredGal, shindo) {
     else if (shindo < 6.5) { shindoStr = shindo.toFixed(1); classStr = "6強"; }
     else { shindoStr = shindo.toFixed(1); classStr = "7"; }
 
-    if (!hasStarted) {
-        document.getElementById('shindo-class').innerText = "-";
-        document.getElementById('shindo-val').innerText = "計測震度: --";
-    } else {
-        document.getElementById('shindo-class').innerText = classStr;
-        document.getElementById('shindo-val').innerText = "計測震度: " + shindoStr;
-    }
+    document.getElementById('shindo-class').innerText = classStr;
+    document.getElementById('shindo-val').innerText = "計測震度: " + shindoStr;
 }
 </script>
 </body>
