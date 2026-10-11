@@ -14,7 +14,6 @@
             color: #333;
             transition: background-color 0.1s ease;
         }
-        /* 警告時の点滅用アニメーション */
         @keyframes flash {
             0% { background-color: #f0f2f5; }
             50% { background-color: #ffcccc; }
@@ -66,7 +65,6 @@
         }
         #shindo-val { font-size: 22px; color: #333; font-weight: bold; }
         
-        /* グラフエリア */
         .graph-container {
             margin: 15px 0;
             background: #ffffff;
@@ -86,7 +84,6 @@
         .metric-card div { color: #666; font-size: 12px; margin-bottom: 2px; }
         .metric-card span { font-size: 16px; font-weight: bold; color: #111; font-family: monospace; }
         
-        /* 設定パネル */
         .settings-panel {
             background: #f8f9fa;
             border: 1px solid #eee;
@@ -118,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 3.5</h2>
+    <h2>計測震度システム Ver 4.0</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -127,7 +124,6 @@
         <div id="shindo-val">計測震度: --</div>
     </div>
 
-    <!-- リアルタイムグラフ -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -143,7 +139,6 @@
         </div>
     </div>
 
-    <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -170,12 +165,12 @@
 <script>
 // 状態変数とバッファの設定
 var sampleWindow = new Array(); 
-var WINDOW_DURATION = 300; 
+var WINDOW_DURATION = 300; // 0.3秒間
 
-// 2次IIRフィルターの遅延用変数（エラーの原因となる配列表現を完全に排除）
-var vx0 = 0, vx1 = 0, vx2 = 0;
-var vy0 = 0, vy1 = 0, vy2 = 0;
-var vz0 = 0, vz1 = 0, vz2 = 0;
+// フィルター用：過去3回分の生データを保存する変数（絶対に暴走・増幅しないFIR方式）
+var lastX1 = 0, lastX2 = 0, lastX3 = 0;
+var lastY1 = 0, lastY2 = 0, lastY3 = 0;
+var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0;
 
 var canvas = document.getElementById('wave-graph');
 var ctx = canvas.getContext('2d');
@@ -220,7 +215,7 @@ function initSystem() {
     }
 }
 
-// 最大判定値の定期的な減衰処理
+// 最大判定値の定期的な減衰処理（ゆっくり数値を戻す）
 setInterval(function() {
     if (!isSystemRunning) return;
     if (maxMeasuredShindo > -1.0) {
@@ -241,27 +236,27 @@ function startSeismometer() {
         let ry = event.acceleration.y || 0;
         let rz = event.acceleration.z || 0;
 
+        // ハードウェア生データの合成加速度
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
+        if (isNaN(rawGal) || !isFinite(rawGal)) rawGal = 0;
 
-        // X軸バンドパスフィルタ (0.5Hz〜5.0Hz)
-        vx2 = vx1; 
-        vx1 = vx0; 
-        vx0 = (rx * 0.046) + (0.907 * vx1) - (1.814 * vx2);
-        var fx = vx0 - vx2;
+        // 移動平均・差分をベースにした、絶対に自己増殖（暴走）しない安全な低周波抽出フィルター
+        // タイピングのような一瞬・連続のトゲ（高周波）は足し引きで相殺されます
+        var fx = (rx + lastX1 + lastX2 + lastX3) / 4 - lastX1;
+        var fy = (ry + lastY1 + lastY2 + lastY3) / 4 - lastY1;
+        var fz = (rz + lastZ1 + lastZ2 + lastZ3) / 4 - lastZ1;
 
-        // Y軸バンドパスフィルタ
-        vy2 = vy1; 
-        vy1 = vy0; 
-        vy0 = (ry * 0.046) + (0.907 * vy1) - (1.814 * vy2);
-        var fy = vy0 - vy2;
+        // 過去の値を更新
+        lastX3 = lastX2; lastX2 = lastX1; lastX1 = rx;
+        lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
+        lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // Z軸バンドパスフィルタ
-        vz2 = vz1; 
-        vz1 = vz0; 
-        vz0 = (rz * 0.046) + (0.907 * vz1) - (1.814 * vz2);
-        var fz = vz0 - vz2;
-
+        // フィルター通過後の地震動成分
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
+        
+        // 【安全ガード】スマホの衝突ノイズによる過大値を制限し、Infinity（無限大）化を完全に防ぐ
+        if (isNaN(filteredGal) || !isFinite(filteredGal)) filteredGal = 0;
+        if (filteredGal > 2000) filteredGal = 2000; // 地球上で観測される最大クラスの加速度（2000gal）を上限に設定
 
         graphData.push(filteredGal);
         graphData.shift();
@@ -269,20 +264,27 @@ function startSeismometer() {
         var now = performance.now();
         sampleWindow.push({ time: now, gal: filteredGal });
 
-        while (sampleWindow.length > 0 && sampleWindow[0].time < now - WINDOW_DURATION) {
+        while (sampleWindow.length > 0 && sampleWindow.time < now - WINDOW_DURATION) {
             sampleWindow.shift();
         }
 
         var a = 0;
         if (sampleWindow.length > 0) {
             var gals = sampleWindow.map(function(s) { return s.gal; });
-            a = Math.min.apply(null, gals);
+            a = Math.min.apply(null, gals); // 0.3秒間で一番「継続」している揺れの強さを代表値にする
         }
+        
+        if (isNaN(a) || !isFinite(a)) a = 0;
 
         var currentShindo = -1.0;
-        if (a > 0.05) {
+        if (a > 0.1) { // わずかな生活ノイズの境界線
+            // 気象庁公式の対数計算式
             currentShindo = 2.0 * Math.log10(a) + 0.94;
         }
+
+        // 【安全ガード】計算結果の安全上限・下限をチェック
+        if (isNaN(currentShindo) || !isFinite(currentShindo)) currentShindo = -1.0;
+        if (currentShindo > 7.0) currentShindo = 7.0; 
 
         if (currentShindo > maxMeasuredShindo) {
             maxMeasuredShindo = currentShindo;
