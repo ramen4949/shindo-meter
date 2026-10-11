@@ -159,7 +159,7 @@
     <div class="history-panel">
         <div class="history-title">📜 震度変化履歴</div>
         <ul id="history-list">
-            <li style="color: #999; text-align: center;">履歴はありません</li>
+            <li style="color: #999; text-align: center;" id="no-history">履歴はありません</li>
         </ul>
     </div>
 
@@ -265,22 +265,29 @@ function startSeismometer() {
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
         if (simVal > 0) {
             rawGal += simVal;
-            simVal *= 0.85;
+            simVal *= 0.6; // マウスシミュレーションの減衰を速く
         }
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
         
         currentRawGal = rawGal;
     });
 
-    setInterval(updateLoop, 100);
+    // 高頻度（50msごと）でリアルタイムに更新・減衰させる
+    setInterval(updateLoop, 50);
     requestAnimationFrame(renderLoop);
 }
 
 function updateLoop() {
     if (!isSystemRunning) return;
 
-    smoothedGal = smoothedGal * 0.5 + currentRawGal * 0.5;
-    if (smoothedGal > 2000) { smoothedGal = 2000; }
+    // 揺れが止まったときに素早く0に戻るよう、上がる時は素早く、下がる時は速やかに減衰させる
+    if (currentRawGal > smoothedGal) {
+        smoothedGal = smoothedGal * 0.3 + currentRawGal * 0.7;
+    } else {
+        smoothedGal = smoothedGal * 0.6 + currentRawGal * 0.4; // 減衰を速く
+    }
+    if (smoothedGal < 0.5) smoothedGal = 0;
+    if (smoothedGal > 2000) smoothedGal = 2000;
 
     graphBuffer.shift();
     graphBuffer.push(smoothedGal);
@@ -292,9 +299,15 @@ function updateLoop() {
             targetShindo = 2.0 * logVal + 0.50; 
         }
     }
-    if (targetShindo > 7.0) { targetShindo = 7.0; }
+    if (targetShindo > 7.0) targetShindo = 7.0;
 
-    smoothedShindo = smoothedShindo * 0.6 + targetShindo * 0.4;
+    // 震度の追従と素早い下がり（減衰）の調整
+    if (targetShindo > smoothedShindo) {
+        smoothedShindo = smoothedShindo * 0.4 + targetShindo * 0.6;
+    } else {
+        smoothedShindo = smoothedShindo * 0.7 + targetShindo * 0.3;
+    }
+    if (smoothedShindo < 0.05) smoothedShindo = 0.0;
 
     if (smoothedShindo >= config.threshold) {
         triggerAlarm();
@@ -406,7 +419,7 @@ function updateDisplay(rawGal, filteredGal, shindo) {
     document.getElementById('shindo-class').innerText = classStr;
     document.getElementById('shindo-val').innerText = "計測震度: " + shindoStr;
 
-    // 震度階級が変わったときに履歴を追加する（震度0から1以上になった時、またはクラスが変わった時）
+    // 震度階級が変わったときに履歴を追加
     if (classStr !== lastRecordedClass) {
         lastRecordedClass = classStr;
         addHistory(classStr, shindoStr);
@@ -420,16 +433,15 @@ function addHistory(classStr, shindoStr) {
                   String(now.getSeconds()).padStart(2, '0');
 
     var listElem = document.getElementById('history-list');
+    var noHistoryElem = document.getElementById('no-history');
     
-    // 初回のエレメント（履歴はありません）を削除
-    if (listElem.children.length === 1 && listElem.children[0].style.color === 'rgb(153, 153, 153)') {
-        listElem.innerHTML = '';
+    if (noHistoryElem) {
+        noHistoryElem.remove();
     }
 
     var li = document.createElement('li');
     li.innerHTML = `<span>[${timeStr}]</span> <span><b>震度 ${classStr}</b> (計測: ${shindoStr})</span>`;
     
-    // 新しい履歴を一番上に追加
     listElem.insertBefore(li, listElem.firstChild);
 }
 </script>
