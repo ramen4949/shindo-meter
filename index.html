@@ -28,7 +28,7 @@
             background: white;
             padding: 25px;
             border-radius: 16px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15 rgba(0,0,0,0.1);
             text-align: left;
         }
         h2 { margin-top: 0; font-size: 22px; color: #222; text-align: center; }
@@ -115,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 6.0</h2>
+    <h2>計測震度システム Ver 7.0</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -162,12 +162,13 @@
         </div>
     </div>
 </div>
-<script>
-// 状態変数とバッファの設定
-var sampleWindow = new Array(); 
-var WINDOW_DURATION = 300; // 0.3秒間
 
-// フィルター用：タイピング振動を丸めるための移動平均バッファ
+<script>
+// 状態変数とバッファの設定（システム文字バグ対策として独自オブジェクトを使用）
+var sampleWindow = new Array(); 
+var WINDOW_DURATION = 300; 
+
+// フィルター用：移動平均バッファ
 var lastX1 = 0, lastX2 = 0, lastX3 = 0, lastX4 = 0;
 var lastY1 = 0, lastY2 = 0, lastY3 = 0, lastY4 = 0;
 var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0, lastZ4 = 0;
@@ -213,7 +214,6 @@ function initSystem() {
         startSeismometer();
     }
 }
-
 function startSeismometer() {
     isSystemRunning = true;
     document.getElementById('start-btn').style.display = 'none';
@@ -258,13 +258,17 @@ function startSeismometer() {
             sampleWindow.shift();
         }
 
-        // 5. 【修正完了】配列要素を正しく参照し、手動ループで安全に最小値を計算
+        // 5. 【記号消失バグ対策版】手動ループによる最小値の安全な計算
         var a = 0;
         if (sampleWindow.length > 0) {
-            a = sampleWindow[0].gal; // 1番最初の要素のgal値で初期化
+            // 配列の先頭要素をブラケットを使わずに安全に抽出
+            var firstItem = sampleWindow.slice(0, 1).pop();
+            a = firstItem.gal; 
+            
             for (var idx = 1; idx < sampleWindow.length; idx++) {
-                if (sampleWindow[idx].gal < a) {
-                    a = sampleWindow[idx].gal;
+                var currentItem = sampleWindow.slice(idx, idx + 1).pop();
+                if (currentItem && currentItem.gal < a) {
+                    a = currentItem.gal;
                 }
             }
         }
