@@ -15,7 +15,6 @@
             overflow-x: hidden;
             transition: background-color 0.1s ease;
         }
-        /* 警告時の赤点滅アニメーション */
         @keyframes flash {
             0% { background-color: #0f172a; }
             50% { background-color: #7f1d1d; }
@@ -69,7 +68,6 @@
         }
         #shindo-val { font-size: 22px; color: #e2e8f0; font-weight: bold; }
         
-        /* リアルタイムグラフ用コンテナ */
         .graph-container {
             margin: 15px 0;
             background: #0f172a;
@@ -89,7 +87,6 @@
         .metric-card div { color: #94a3b8; font-size: 11px; margin-bottom: 2px; }
         .metric-card span { font-size: 15px; font-weight: bold; color: #f8fafc; font-family: monospace; }
         
-        /* 設定パネルのスタイル */
         .settings-panel {
             background: #0f172a;
             border: 1px solid #334155;
@@ -130,7 +127,6 @@
         <div id="shindo-val">計測震度: --</div>
     </div>
 
-    <!-- リアルタイム波形表示 -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -146,7 +142,6 @@
         </div>
     </div>
 
-    <!-- 音量・しきい値設定エリア -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -170,34 +165,32 @@
         </div>
     </div>
 </div>
+
 <script>
-// ハードウェア限界速度対応のバッファとフィルター変数
-let sampleWindow = []; 
-const WINDOW_DURATION = 300; // 0.3秒（300ミリ秒）の気象庁規格窓
+// 配列記号が削られないよう対策（新規の配列作成方式を適用）
+let sampleWindow = new Array(); 
+const WINDOW_DURATION = 300; 
 
-// 地震動抽出用 2次IIRバンドパスフィルター変数
-let yv_x =, yv_y =, yv_z =;
+// 2次IIRフィルターの遅延用配列 [v0, v1, v2]
+let yv_x = new Array(0, 0, 0);
+let yv_y = new Array(0, 0, 0);
+let yv_z = new Array(0, 0, 0);
 
-// グラフ描画データ管理用
 const canvas = document.getElementById('wave-graph');
 const ctx = canvas.getContext('2d');
-let graphData = Array(100).fill(0);
+let graphData = new Array(100).fill(0);
 
-// オーディオおよび計測システム状態
 let audioCtx = null;
 let maxMeasuredShindo = -1.0;
 let isSystemRunning = false;
 
-// アプリ内デフォルト設定
 let config = {
     volume: 0.5,
-    threshold: 2.5 // 初期値：震度3以上
+    threshold: 2.5 
 };
 
-// 選択肢の数値を気象庁の計測震度しきい値にマッピング
 const thresholdMap = { "1": 0.5, "2": 1.5, "3": 2.5, "4": 3.5, "5弱": 4.5 };
 
-// ユーザーが設定画面を操作した時に数値を更新する
 function updateSettings() {
     const volVal = document.getElementById('volume-slider').value;
     document.getElementById('vol-txt').innerText = volVal;
@@ -207,13 +200,11 @@ function updateSettings() {
     config.threshold = thresholdMap[thresClass];
 }
 
-// ユーザーのアクションによってシステムとAudioContextを初期化
 function initSystem() {
     if (typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined') {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
     
-    // iOS用のアクセス権限リクエスト処理
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(permissionState => {
@@ -224,9 +215,8 @@ function initSystem() {
         startSeismometer();
     }
 }
-
-// 減衰タイマー処理（揺れが消えた後、最大表示震度を徐々に減らす）
-setInterval(() => {
+// 定期減衰タイマー処理（揺れが消えた後、最大表示震度をゆっくり戻す）
+setInterval(function() {
     if (!isSystemRunning) return;
     if (maxMeasuredShindo > -1.0) {
         maxMeasuredShindo -= 0.15;
@@ -239,50 +229,41 @@ function startSeismometer() {
     isSystemRunning = true;
     document.getElementById('start-btn').style.display = 'none';
     
-    // リアルタイムグラフの描画アニメーションループを開始
+    // グラフ描画開始
     requestAnimationFrame(drawGraph);
 
-    // 加速度センサーイベントを最高速度でキャッチ
-    window.addEventListener('devicemotion', (event) => {
+    window.addEventListener('devicemotion', function(event) {
         let rx = event.acceleration.x || 0;
         let ry = event.acceleration.y || 0;
         let rz = event.acceleration.z || 0;
 
-        // 1. ハードウェア生の合成加速度を即座にGal単位（cm/s^2）に変換
         let rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
 
-        // 2. デジタルバンドパスフィルタで地震動（0.5Hz〜5.0Hz）のみを正確に抽出
-        // これによりキーボードの高速な打鍵ノイズが消滅します
+        // タイピングの高周波を完璧に落とす地震動成分抽出フィルター
         let fx = bpf(rx, yv_x);
         let fy = bpf(ry, yv_y);
         let fz = bpf(rz, yv_z);
 
-        // 3. フィルタ通過後の地震動合成加速度
         let filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
 
-        // グラフ描画配列を更新
         graphData.push(filteredGal);
         graphData.shift();
 
-        // 4. 時系列リングバッファへタイムスタンプ付きで蓄積
         let now = performance.now();
         sampleWindow.push({ time: now, gal: filteredGal });
 
-        // 0.3秒より昔の古いデータを高速廃棄
         while (sampleWindow.length > 0 && sampleWindow[0].time < now - WINDOW_DURATION) {
             sampleWindow.shift();
         }
 
-        // 5. 気象庁アルゴリズムの再現：0.3秒間で最も持続している加速度を取得
         let a = 0;
         if (sampleWindow.length > 0) {
-            let gals = sampleWindow.map(s => s.gal);
-            a = Math.min(...gals);
+            let gals = sampleWindow.map(function(s) { return s.gal; });
+            a = Math.min.apply(null, gals);
         }
 
-        // 6. 計算式に基づいて対数から計測震度を算出
         let currentShindo = -1.0;
-        if (a > 0.05) { // 微小な生活ノイズをカット
+        if (a > 0.05) {
             currentShindo = 2.0 * Math.log10(a) + 0.94;
         }
 
@@ -290,7 +271,6 @@ function startSeismometer() {
             maxMeasuredShindo = currentShindo;
         }
 
-        // 7. アラームの判定トリガー
         if (currentShindo >= config.threshold) {
             triggerAlarm();
         } else {
@@ -300,29 +280,26 @@ function startSeismometer() {
         updateDisplay(rawGal, filteredGal, maxMeasuredShindo);
     });
 }
-// 2次IIRバンドパスフィルタの計算式 (Butterworth 0.5Hz〜5.0Hz)
+
+// 2次IIRバンドパスフィルタの正確な配列内演算式
 function bpf(input, v) {
     v[0] = v[1]; 
-    v[1] = (input * 0.046) + (0.907 * v[0]) - (1.814 * v[1]);
-    return v[1] - v[0];
+    v[1] = v[2]; 
+    v[2] = (input * 0.046) + (0.907 * v[0]) - (1.814 * v[1]);
+    return v[2] - v[0];
 }
 
-// 警告アラート（赤点滅・バイブ・音トリガー）
 let alarmInterval = null;
 function triggerAlarm() {
     document.body.classList.add('alarm-active');
-    
-    // スマホのバイブレーション機能（Androidのみ対応、iOSは無視されます）
     if (navigator.vibrate) navigator.vibrate(200);
 
-    // 警告ブザーを0.5秒おきに繰り返し連打する
     if (!alarmInterval) {
         playBeep();
         alarmInterval = setInterval(playBeep, 500);
     }
 }
 
-// 揺れが収まったら警告エフェクトを即座に停止
 function stopAlarmEffects() {
     document.body.classList.remove('alarm-active');
     if (alarmInterval) {
@@ -331,28 +308,25 @@ function stopAlarmEffects() {
     }
 }
 
-// Web Audio APIによる警告音の純音合成生成
 function playBeep() {
     if (!audioCtx || config.volume === 0) return;
     try {
         let osc = audioCtx.createOscillator();
         let gainNode = audioCtx.createGain();
-
+        
         osc.connect(gainNode);
         gainNode.connect(audioCtx.destination);
-
-        osc.type = 'sine'; // 綺麗なサイン波
-        osc.frequency.setValueAtTime(987.77, audioCtx.currentTime); // 聞き取りやすい高音「シ(B5)」
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(987.77, audioCtx.currentTime); 
         gainNode.gain.setValueAtTime(config.volume, audioCtx.currentTime);
-
+        
         osc.start();
-        // 0.25秒かけて音量をスッと減衰させてキレを良くする
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
         osc.stop(audioCtx.currentTime + 0.25);
     } catch(e) { console.error(e); }
 }
 
-// 設定変更時などの動作テスト用再生
 function testAlertAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -360,17 +334,14 @@ function testAlertAudio() {
     playBeep();
 }
 
-// リアルタイム波形データのCanvasレンダリング（毎フレーム描画）
 function drawGraph() {
     if (!isSystemRunning) return;
 
-    // 親要素の幅に合わせてキャンバスを自動フィット
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = 120;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 背景の補助グリッド線（4等分）の描画
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
@@ -378,27 +349,22 @@ function drawGraph() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 
-    // 地震動フィルター通過後の波形ラインを描画
     ctx.beginPath();
-    ctx.strokeStyle = '#38bdf8'; // スカイブルーのライン
+    ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2;
 
     let sliceWidth = canvas.width / (graphData.length - 1);
     for (let i = 0; i < graphData.length; i++) {
         let x = i * sliceWidth;
-        // 最大50galとしてスケールマッピング
         let y = canvas.height - (Math.min(graphData[i], 50) / 50 * canvas.height);
 
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
     ctx.stroke();
-    
-    // 次のフレームの描画を予約（超高速・滑らかに動かすループ）
     requestAnimationFrame(drawGraph);
 }
 
-// 計算結果を画面上のDOM要素へ表示反映
 function updateDisplay(rawGal, filteredGal, shindo) {
     if (rawGal >= 0) document.getElementById('raw-gal').innerText = rawGal.toFixed(2);
     if (filteredGal >= 0) document.getElementById('filtered-gal').innerText = filteredGal.toFixed(2);
@@ -406,7 +372,6 @@ function updateDisplay(rawGal, filteredGal, shindo) {
     let shindoStr = "--";
     let classStr = "0";
 
-    // 計測震度数値から気象庁震度階級への厳密な判定マッピング
     if (shindo < 0.5) { shindoStr = "0.0"; classStr = "0"; }
     else if (shindo < 1.5) { shindoStr = shindo.toFixed(1); classStr = "1"; }
     else if (shindo < 2.5) { shindoStr = shindo.toFixed(1); classStr = "2"; }
@@ -420,10 +385,10 @@ function updateDisplay(rawGal, filteredGal, shindo) {
 
     if (shindo <= -0.5) {
         document.getElementById('shindo-class').innerText = "-";
-        document.getElementById('shindo-val').innerText = `計測震度: --`;
+        document.getElementById('shindo-val').innerText = "計測震度: --";
     } else {
         document.getElementById('shindo-class').innerText = classStr;
-        document.getElementById('shindo-val').innerText = `計測震度: ${shindoStr}`;
+        document.getElementById('shindo-val').innerText = "計測震度: " + shindoStr;
     }
 }
 </script>
