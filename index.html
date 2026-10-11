@@ -115,7 +115,7 @@
 <body>
 
 <div class="container">
-    <h2>計測震度システム Ver 5.5</h2>
+    <h2>計測震度システム Ver 6.0</h2>
     <button id="start-btn" onclick="initSystem()">震度計モジュールを起動</button>
 
     <div class="result-box">
@@ -124,7 +124,6 @@
         <div id="shindo-val">計測震度: --</div>
     </div>
 
-    <!-- リアルタイムグラフ -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -140,7 +139,6 @@
         </div>
     </div>
 
-    <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -260,10 +258,10 @@ function startSeismometer() {
             sampleWindow.shift();
         }
 
-        // 5. 手動ループによる最小値の計算（最新0.3秒間の底堅い揺れの強さ）
+        // 5. 【修正完了】配列要素を正しく参照し、手動ループで安全に最小値を計算
         var a = 0;
         if (sampleWindow.length > 0) {
-            a = sampleWindow[0].gal; // 最初の要素で初期化
+            a = sampleWindow[0].gal; // 1番最初の要素のgal値で初期化
             for (var idx = 1; idx < sampleWindow.length; idx++) {
                 if (sampleWindow[idx].gal < a) {
                     a = sampleWindow[idx].gal;
@@ -273,7 +271,7 @@ function startSeismometer() {
         
         if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
 
-        // 6. リアルタイム計測震度の算出（減衰処理はせず、常に最新値をそのまま表示）
+        // 6. リアルタイム計測震度の算出
         var currentShindo = -1.0;
         if (a >= 0.01) { 
             var logVal = Math.log10(a);
@@ -288,7 +286,7 @@ function startSeismometer() {
         }
         if (currentShindo > 7.0) { currentShindo = 7.0; }
 
-        // アラーム判定（その瞬間の震度がしきい値を超えている場合のみ鳴る）
+        // アラーム判定
         if (currentShindo >= config.threshold) {
             triggerAlarm();
         } else {
