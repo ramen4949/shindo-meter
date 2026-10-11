@@ -215,7 +215,7 @@ var lastRecordedClass = "0";
 var simVal = 0;
 window.addEventListener('mousemove', function(e) {
     if (!isSystemRunning) return;
-    simVal = (Math.abs(e.movementX) + Math.abs(e.movementY)) * 2;
+    simVal = (Math.abs(e.movementX) + Math.abs(e.movementY)) * 3;
 });
 
 function updateSettings() {
@@ -265,14 +265,14 @@ function startSeismometer() {
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
         if (simVal > 0) {
             rawGal += simVal;
-            simVal *= 0.6; // マウスシミュレーションの減衰を速く
+            simVal *= 0.4; // マウスシミュレーションの減衰をさらに素早く
         }
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
         
         currentRawGal = rawGal;
     });
 
-    // 高頻度（50msごと）でリアルタイムに更新・減衰させる
+    // 50msごとに更新・急速減衰処理
     setInterval(updateLoop, 50);
     requestAnimationFrame(renderLoop);
 }
@@ -280,13 +280,17 @@ function startSeismometer() {
 function updateLoop() {
     if (!isSystemRunning) return;
 
-    // 揺れが止まったときに素早く0に戻るよう、上がる時は素早く、下がる時は速やかに減衰させる
-    if (currentRawGal > smoothedGal) {
-        smoothedGal = smoothedGal * 0.3 + currentRawGal * 0.7;
-    } else {
-        smoothedGal = smoothedGal * 0.6 + currentRawGal * 0.4; // 減衰を速く
+    // 入力がない場合は急速にGalを0に向かわせる
+    if (currentRawGal < 1.0) {
+        currentRawGal = 0;
     }
-    if (smoothedGal < 0.5) smoothedGal = 0;
+
+    if (currentRawGal > smoothedGal) {
+        smoothedGal = smoothedGal * 0.2 + currentRawGal * 0.8; // 上昇は敏感に
+    } else {
+        smoothedGal = smoothedGal * 0.3 + currentRawGal * 0.7; // 下降（減衰）を非常に速く
+    }
+    if (smoothedGal < 0.2) smoothedGal = 0;
     if (smoothedGal > 2000) smoothedGal = 2000;
 
     graphBuffer.shift();
@@ -301,11 +305,10 @@ function updateLoop() {
     }
     if (targetShindo > 7.0) targetShindo = 7.0;
 
-    // 震度の追従と素早い下がり（減衰）の調整
     if (targetShindo > smoothedShindo) {
-        smoothedShindo = smoothedShindo * 0.4 + targetShindo * 0.6;
+        smoothedShindo = smoothedShindo * 0.3 + targetShindo * 0.7;
     } else {
-        smoothedShindo = smoothedShindo * 0.7 + targetShindo * 0.3;
+        smoothedShindo = smoothedShindo * 0.4 + targetShindo * 0.6; // 震度の下がりも素早く
     }
     if (smoothedShindo < 0.05) smoothedShindo = 0.0;
 
