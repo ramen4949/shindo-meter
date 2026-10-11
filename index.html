@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>簡易震度計測（目安）</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f2f5;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 400px;
+            margin: 30px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button {
+            font-size: 16px;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .result-box {
+            margin-top: 30px;
+        }
+        #shindo {
+            font-size: 64px;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        #gal {
+            font-size: 18px;
+            color: #666;
+        }
+        .info {
+            font-size: 12px;
+            color: #999;
+            margin-top: 20px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>簡易震度メーター</h2>
+    <p>スマホを水平に置いて、揺らしてみてください。</p>
+    <button id="start-btn" onclick="requestPermission()">センサーを有効化</button>
+
+    <div class="result-box">
+        <div>推定震度</div>
+        <div id="shindo">-</div>
+        <div id="gal">最大合成加速度: 0.00 gal</div>
+    </div>
+
+    <div class="info">
+        ※このアプリは端末の加速度センサーから簡易計算したものです。正確な気象庁の計測震度とは異なります。<br>
+        ※iPhone(iOS)の場合は、HTTPS通信環境のブラウザで実行する必要があります。
+    </div>
+</div>
+
+<script>
+let maxGal = 0;
+// 定期的に最大値をリセットするためのタイマー（3秒ごとにピークを減衰）
+setInterval(() => {
+    maxGal = maxGal * 0.8; 
+}, 1000);
+
+// センサーの許可をリクエストする関数
+function requestPermission() {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        // iOS 13+ の対応
+        DeviceMotionEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    startTracking();
+                } else {
+                    alert('センサーの利用が拒否されました。');
+                }
+            })
+            .catch(console.error);
+    } else {
+        // Android や古いiOSなど
+        startTracking();
+    }
+}
+
+function startTracking() {
+    document.getElementById('start-btn').style.display = 'none';
+
+    window.addEventListener('devicemotion', (event) => {
+        // 重力加速度を除いた加速度を取得 (単位: m/s^2)
+        let x = event.acceleration.x || 0;
+        let y = event.acceleration.y || 0;
+        let z = event.acceleration.z || 0;
+
+        // 3軸の合成加速度を計算
+        let acc = Math.sqrt(x*x + y*y + z*z);
+
+        // 単位を m/s^2 から gal (cm/s^2) に変換 (1 m/s^2 = 100 gal)
+        let gal = acc * 100;
+
+        // ノイズ除去（微小な振動は無視）
+        if (gal < 0.8) gal = 0;
+
+        // 最大値を更新
+        if (gal > maxGal) {
+            maxGal = gal;
+        }
+
+        // ガル値から簡易震度（気象庁の目安換算表をベース）を算出
+        let shindo = calculateShindo(maxGal);
+
+        // 画面表示を更新
+        document.getElementById('gal').innerText = `最大合成加速度: ${maxGal.toFixed(2)} gal`;
+        document.getElementById('shindo').innerText = shindo;
+    });
+}
+
+// ガル(gal)から簡易的に震度をマッピングする関数
+function calculateShindo(gal) {
+    if (gal < 0.8) return "0";
+    if (gal < 2.5) return "1";
+    if (gal < 8.0) return "2";
+    if (gal < 25.0) return "3";
+    if (gal < 80.0) return "4";
+    if (gal < 140.0) return "5弱";
+    if (gal < 250.0) return "5強";
+    if (gal < 400.0) return "6弱";
+    if (gal < 830.0) return "6強";
+    return "7";
+}
+</script>
+
+</body>
+</html>
