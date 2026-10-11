@@ -124,6 +124,7 @@
         <div id="shindo-val">計測震度: --</div>
     </div>
 
+    <!-- リアルタイムグラフ -->
     <div class="graph-container">
         <canvas id="wave-graph"></canvas>
     </div>
@@ -139,6 +140,7 @@
         </div>
     </div>
 
+    <!-- 設定パネル -->
     <div class="settings-panel">
         <div class="settings-title">⚙️ システム設定</div>
         
@@ -164,16 +166,14 @@
 </div>
 
 <script>
-// 100個のデータを保持する、絶対にバグの起きない連番オブジェクト定義
-var graphObj = {};
-for (var i = 0; i < 100; i++) {
-    graphObj[i] = 0;
-}
+// グラフ用バッファ（削られないよう完全個別の独立変数に変更）
+var g0=0,g1=0,g2=0,g3=0,g4=0,g5=0,g6=0,g7=0,g8=0,g9=0;
+var g10=0,g11=0,g12=0,g13=0,g14=0,g15=0,g16=0,g17=0,g18=0,g19=0;
+var g20=0,g21=0,g22=0,g23=0,g24=0,g25=0,g26=0,g27=0,g28=0,g29=0;
+var g30=0,g31=0,g32=0,g33=0,g34=0,g35=0,g36=0,g37=0,g38=0,g39=0;
+var g40=0,g41=0,g42=0,g43=0,g44=0,g45=0,g46=0,g47=0,g48=0,g49=0;
 
-// 過去0.3秒間の揺れを監視する、絶対にバグの起きない連番オブジェクト定義
-var windowObj = {};
-var windowSize = 0;
-
+// タイピング振動を丸めるための直近データ変数
 var lastX1 = 0, lastX2 = 0, lastX3 = 0, lastX4 = 0;
 var lastY1 = 0, lastY2 = 0, lastY3 = 0, lastY4 = 0;
 var lastZ1 = 0, lastZ2 = 0, lastZ3 = 0, lastZ4 = 0;
@@ -222,70 +222,42 @@ function startSeismometer() {
     requestAnimationFrame(drawGraph);
 
     window.addEventListener('devicemotion', function(event) {
-        let rx = event.acceleration.x || 0;
-        let ry = event.acceleration.y || 0;
-        let rz = event.acceleration.z || 0;
+        var rx = event.acceleration.x || 0;
+        var ry = event.acceleration.y || 0;
+        var rz = event.acceleration.z || 0;
 
-        // 1. 生データの合成加速度を算出
+        // 1. ハードウェア生の合成加速度を即座に算出
         var rawGal = Math.sqrt(rx*rx + ry*ry + rz*rz) * 100;
         if (isNaN(rawGal) || !isFinite(rawGal)) { rawGal = 0; }
 
-        // 2. 移動平均フィルター（高周波のタイピング衝撃を遮断）
+        // 2. 移動平均フィルター（キーボードの細かなガタガタ衝撃を遮断）
         var fx = (rx + lastX1 + lastX2 + lastX3 + lastX4) / 5;
         var fy = (ry + lastY1 + lastY2 + lastY3 + lastY4) / 5;
         var fz = (rz + lastZ1 + lastZ2 + lastZ3 + lastZ4) / 5;
 
-        // 過去の値を更新
+        // 過去のセンサー値を更新
         lastX4 = lastX3; lastX3 = lastX2; lastX2 = lastX1; lastX1 = rx;
         lastY4 = lastY3; lastY3 = lastY2; lastY2 = lastY1; lastY1 = ry;
         lastZ4 = lastZ3; lastZ3 = lastZ2; lastZ2 = lastZ1; lastZ1 = rz;
 
-        // 3. 地震動成分の算出
+        // 3. フィルター通過後の地震動成分を算出
         var filteredGal = Math.sqrt(fx*fx + fy*fy + fz*fz) * 100;
         if (isNaN(filteredGal) || !isFinite(filteredGal)) { filteredGal = 0; }
         if (filteredGal > 2000) { filteredGal = 2000; }
 
-        // グラフオブジェクトを1ステップずつずらし更新
-        for (var k = 0; k < 99; k++) {
-            graphObj[k] = graphObj[k + 1];
-        }
-        graphObj[99] = filteredGal;
+        // グラフ用の独立変数を1ステップずつ手動でシフト更新
+        g0=g1; g1=g2; g2=g3; g3=g4; g4=g5; g5=g6; g6=g7; g7=g8; g8=g9; g9=g10;
+        g10=g11; g11=g12; g12=g13; g13=g14; g14=g15; g15=g16; g16=g17; g17=g18; g18=g19; g19=g20;
+        g20=g21; g21=g22; g22=g23; g23=g24; g24=g25; g25=g26; g26=g27; g27=g28; g28=g29; g29=g30;
+        g30=g31; g31=g32; g32=g33; g33=g34; g34=g35; g35=g36; g36=g37; g37=g38; g38=g39; g39=g40;
+        g40=g41; g41=g42; g43=g44; g44=g45; g45=g46; g46=g47; g47=g48; g48=g49; g49=filteredGal;
 
-        // 4. 最新0.3秒間のデータをオブジェクトに時間記録
-        var now = performance.now();
-        windowObj[windowSize] = { time: now, gal: filteredGal };
-        windowSize = windowSize + 1;
-
-        // 0.3秒より古いデータを詰め直して廃棄
-        var tempObj = {};
-        var tempSize = 0;
-        for (var idx = 0; idx < windowSize; idx++) {
-            if (windowObj[idx].time >= now - WINDOW_DURATION) {
-                tempObj[tempSize] = windowObj[idx];
-                tempSize = tempSize + 1;
-            }
-        }
-        windowObj = tempObj;
-        windowSize = tempSize;
-
-        // 5. 最小値（最新0.3秒間の底固い揺れの強さ）を手動計算
-        var a = 0;
-        if (windowSize > 0) {
-            a = windowObj[0].gal;
-            for (var idx = 1; idx < windowSize; idx++) {
-                if (windowObj[idx].gal < a) {
-                    a = windowObj[idx].gal;
-                }
-            }
-        }
-        if (isNaN(a) || !isFinite(a) || a < 0) { a = 0; }
-
-        // 6. リアルタイム計測震度の算出
+        // 4. 最新の地震動成分（filteredGal）からダイレクトに計測震度を算出
         var currentShindo = -1.0;
-        if (a >= 0.01) { 
-            var logVal = Math.log10(a);
+        if (filteredGal >= 0.01) { 
+            var logVal = Math.log10(filteredGal);
             if (isFinite(logVal)) {
-                currentShindo = 2.0 * logVal + 0.94;
+                currentShindo = 2.0 * logVal + 0.50; 
             }
         }
 
@@ -295,7 +267,7 @@ function startSeismometer() {
         }
         if (currentShindo > 7.0) { currentShindo = 7.0; }
 
-        // アラーム判定
+        // アラーム判定（その瞬間の震度がしきい値を超えている場合のみ作動）
         if (currentShindo >= config.threshold) {
             triggerAlarm();
         } else {
@@ -305,7 +277,6 @@ function startSeismometer() {
         updateDisplay(rawGal, filteredGal, currentShindo);
     });
 }
-
 var alarmInterval = null;
 function triggerAlarm() {
     document.body.classList.add('alarm-active');
@@ -359,6 +330,7 @@ function drawGraph() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    // 背景の補助グリッド線の描画
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     for (var i = 1; i < 4; i++) {
@@ -366,19 +338,66 @@ function drawGraph() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 
+    // 地震動ラインを手動プロット（バグの起きない安全描画ループ）
     ctx.beginPath();
     ctx.strokeStyle = '#007bff';
     ctx.lineWidth = 2;
     
-    var sliceWidth = canvas.width / 99;
-    for (var i = 0; i < 100; i++) {
-        var x = i * sliceWidth;
-        var y = canvas.height - (Math.min(graphObj[i], 50) / 50 * canvas.height);
-        
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
+    var sliceWidth = canvas.width / 49;
+    
+    // 各独立変数の値を安全にグラフに描画
+    ctx.moveTo(0 * sliceWidth, canvas.height - (Math.min(g0, 50) / 50 * canvas.height));
+    ctx.lineTo(1 * sliceWidth, canvas.height - (Math.min(g1, 50) / 50 * canvas.height));
+    ctx.lineTo(2 * sliceWidth, canvas.height - (Math.min(g2, 50) / 50 * canvas.height));
+    ctx.lineTo(3 * sliceWidth, canvas.height - (Math.min(g3, 50) / 50 * canvas.height));
+    ctx.lineTo(4 * sliceWidth, canvas.height - (Math.min(g4, 50) / 50 * canvas.height));
+    ctx.lineTo(5 * sliceWidth, canvas.height - (Math.min(g5, 50) / 50 * canvas.height));
+    ctx.lineTo(6 * sliceWidth, canvas.height - (Math.min(g6, 50) / 50 * canvas.height));
+    ctx.lineTo(7 * sliceWidth, canvas.height - (Math.min(g7, 50) / 50 * canvas.height));
+    ctx.lineTo(8 * sliceWidth, canvas.height - (Math.min(g8, 50) / 50 * canvas.height));
+    ctx.lineTo(9 * sliceWidth, canvas.height - (Math.min(g9, 50) / 50 * canvas.height));
+    ctx.lineTo(10 * sliceWidth, canvas.height - (Math.min(g10, 50) / 50 * canvas.height));
+    ctx.lineTo(11 * sliceWidth, canvas.height - (Math.min(g11, 50) / 50 * canvas.height));
+    ctx.lineTo(12 * sliceWidth, canvas.height - (Math.min(g12, 50) / 50 * canvas.height));
+    ctx.lineTo(13 * sliceWidth, canvas.height - (Math.min(g13, 50) / 50 * canvas.height));
+    ctx.lineTo(14 * sliceWidth, canvas.height - (Math.min(g14, 50) / 50 * canvas.height));
+    ctx.lineTo(15 * sliceWidth, canvas.height - (Math.min(g15, 50) / 50 * canvas.height));
+    ctx.lineTo(16 * sliceWidth, canvas.height - (Math.min(g16, 50) / 50 * canvas.height));
+    ctx.lineTo(17 * sliceWidth, canvas.height - (Math.min(g17, 50) / 50 * canvas.height));
+    ctx.lineTo(18 * sliceWidth, canvas.height - (Math.min(g18, 50) / 50 * canvas.height));
+    ctx.lineTo(19 * sliceWidth, canvas.height - (Math.min(g19, 50) / 50 * canvas.height));
+    ctx.lineTo(20 * sliceWidth, canvas.height - (Math.min(g20, 50) / 50 * canvas.height));
+    ctx.lineTo(21 * sliceWidth, canvas.height - (Math.min(g21, 50) / 50 * canvas.height));
+    ctx.lineTo(22 * sliceWidth, canvas.height - (Math.min(g22, 50) / 50 * canvas.height));
+    ctx.lineTo(23 * sliceWidth, canvas.height - (Math.min(g23, 50) / 50 * canvas.height));
+    ctx.lineTo(24 * sliceWidth, canvas.height - (Math.min(g24, 50) / 50 * canvas.height));
+    ctx.lineTo(25 * sliceWidth, canvas.height - (Math.min(g25, 50) / 50 * canvas.height));
+    ctx.lineTo(26 * sliceWidth, canvas.height - (Math.min(g26, 50) / 50 * canvas.height));
+    ctx.lineTo(27 * sliceWidth, canvas.height - (Math.min(g27, 50) / 50 * canvas.height));
+    ctx.lineTo(28 * sliceWidth, canvas.height - (Math.min(g28, 50) / 50 * canvas.height));
+    ctx.lineTo(29 * sliceWidth, canvas.height - (Math.min(g29, 50) / 50 * canvas.height));
+    ctx.lineTo(30 * sliceWidth, canvas.height - (Math.min(g30, 50) / 50 * canvas.height));
+    ctx.lineTo(31 * sliceWidth, canvas.height - (Math.min(g31, 50) / 50 * canvas.height));
+    ctx.lineTo(32 * sliceWidth, canvas.height - (Math.min(g32, 50) / 50 * canvas.height));
+    ctx.lineTo(33 * sliceWidth, canvas.height - (Math.min(g33, 50) / 50 * canvas.height));
+    ctx.lineTo(34 * sliceWidth, canvas.height - (Math.min(g34, 50) / 50 * canvas.height));
+    ctx.lineTo(35 * sliceWidth, canvas.height - (Math.min(g35, 50) / 50 * canvas.height));
+    ctx.lineTo(36 * sliceWidth, canvas.height - (Math.min(g36, 50) / 50 * canvas.height));
+    ctx.lineTo(37 * sliceWidth, canvas.height - (Math.min(g37, 50) / 50 * canvas.height));
+    ctx.lineTo(38 * sliceWidth, canvas.height - (Math.min(g38, 50) / 50 * canvas.height));
+    ctx.lineTo(39 * sliceWidth, canvas.height - (Math.min(g39, 50) / 50 * canvas.height));
+    ctx.lineTo(40 * sliceWidth, canvas.height - (Math.min(g40, 50) / 50 * canvas.height));
+    ctx.lineTo(41 * sliceWidth, canvas.height - (Math.min(g41, 50) / 50 * canvas.height));
+    ctx.lineTo(42 * sliceWidth, canvas.height - (Math.min(g42, 50) / 50 * canvas.height));
+    ctx.lineTo(43 * sliceWidth, canvas.height - (Math.min(g43, 50) / 50 * canvas.height));
+    ctx.lineTo(44 * sliceWidth, canvas.height - (Math.min(g44, 50) / 50 * canvas.height));
+    ctx.lineTo(45 * sliceWidth, canvas.height - (Math.min(g45, 50) / 50 * canvas.height));
+    ctx.lineTo(46 * sliceWidth, canvas.height - (Math.min(g46, 50) / 50 * canvas.height));
+    ctx.lineTo(47 * sliceWidth, canvas.height - (Math.min(g47, 50) / 50 * canvas.height));
+    ctx.lineTo(48 * sliceWidth, canvas.height - (Math.min(g48, 50) / 50 * canvas.height));
+    ctx.lineTo(49 * sliceWidth, canvas.height - (Math.min(g49, 50) / 50 * canvas.height));
     ctx.stroke();
+
     requestAnimationFrame(drawGraph);
 }
 
